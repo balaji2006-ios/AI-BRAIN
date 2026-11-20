@@ -1,0 +1,27 @@
+# Environment & Secrets
+.env
+.env.local
+
+# Virtual Environments
+venv/
+.venv/
+env/
+
+# Python Cache & Artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Local Data & State (allow directories, ignore runtime data)
+data/conversations/*.db
+data/logs/*.jsonl
+data/voice/*.wav
+*.wav
+
+# IDE & Editor Settings
+.vscode/
+.idea/
+*.swp
+*.swo

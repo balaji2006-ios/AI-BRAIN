@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: transparent;
+            color: #f5f5f5;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            padding: 6px 4px 10px 4px;
+            overflow: hidden;
+        }
+
+        .composer-wrapper {
+            width: 100%;
+            background: #1e1f26;
+            border: 1px solid #3b3c48;
+            border-radius: 20px;
+            padding: 10px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .composer-wrapper:focus-within {
+            border-color: #6c5ce7;
+            box-shadow: 0 4px 20px rgba(108, 92, 231, 0.25);
+        }
+
+        .input-row {
+            display: flex;
+            align-items: flex-start;
+            width: 100%;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 38px;
+            max-height: 90px;
+            resize: none;
+            border: none;
+            outline: none;
+            background: transparent;
+            color: #ffffff;
+            font-size: 15px;
+            line-height: 1.45;
+            font-family: inherit;
+            padding: 4px 2px;
+        }
+
+        textarea::placeholder {
+            color: #8b8d9c;
+        }
+
+        .bottom-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-top: 2px;
+        }
+
+        .status-container {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12.5px;
+            color: #8b8d9c;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #6c5ce7;
+            display: none;
+        }
+
+        .status-dot.active {
+            display: inline-block;
+            background: #e03131;
+            animation: pulse-dot 1.2s infinite;
+        }
+
+        @keyframes pulse-dot {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(1.3); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        .status-text {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 260px;
+        }
+
+        .status-text.listening {
+            color: #ff8787;
+            font-weight: 600;
+        }
+
+        .status-text.error {
+            color: #ff6b6b;
+        }
+
+        .status-text.success {
+            color: #51cf66;
+        }
+
+        .actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        button {
+            border: none;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            transition: all 0.2s ease;
+            user-select: none;
+        }
+
+        .btn-mic {
+            background: #2b2c37;
+            color: #ffffff;
+            font-size: 17px;
+        }
+
+        .btn-mic:hover {
+            background: #3e4050;
+            transform: scale(1.05);
+        }
+
+        .btn-mic.recording {
+            background: #e03131;
+            color: #ffffff;
+            animation: pulse-btn 1.2s infinite;
+        }
+
+        @keyframes pulse-btn {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(224, 49, 49, 0.6); }
+            50% { transform: scale(1.06); box-shadow: 0 0 0 6px rgba(224, 49, 49, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(224, 49, 49, 0); }
+        }
+
+        .btn-send {
+            background: #ffffff;
+            color: #121316;
+            font-size: 19px;
+            font-weight: bold;
+        }
+
+        .btn-send:hover {
+            background: #e2e4ea;
+            transform: scale(1.05);
+        }
+
+        .btn-send:disabled {
+            background: #2b2c37;
+            color: #555768;
+            cursor: not-allowed;
+            transform: none;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="composer-wrapper">
+    <div class="input-row">
+        <textarea
+            id="prompt-input"
+            placeholder="Type your message or click 🎙️ to talk..."
+            rows="1"></textarea>
+    </div>
+
+    <div class="bottom-row">
+        <div class="status-container">
+            <span class="status-dot" id="status-dot"></span>
+            <span class="status-text" id="status-text">Ask anything</span>
+        </div>
+
+        <div class="actions">
+            <button
+                type="button"
+                class="btn-mic"
+                id="mic-btn"
+                title="Speak to AI Brain">
+                🎙️
+            </button>
+            <button
+                type="button"
+                class="btn-send"
+                id="send-btn"
+                title="Send message">
+                ↑
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const promptInput = document.getElementById("prompt-input");
+    const micBtn = document.getElementById("micBtn") || document.getElementById("mic-btn");
+    const sendBtn = document.getElementById("sendBtn") || document.getElementById("send-btn");
+    const statusText = document.getElementById("status-text");
+    const statusDot = document.getElementById("status-dot");
+
+    let isRecording = false;
+    let recognition = null;
+    let mediaRecorder = null;
+    let audioStream = null;
+    let audioChunks = [];
+    let recordedTranscript = "";
+
+    // ----------------------------------------------------
+    // Streamlit Bridge
+    // ----------------------------------------------------
+    function sendToStreamlit(value) {
+        window.parent.postMessage({
+            isStreamlitMessage: true,
+            type: "streamlit:setComponentValue",
+            value: value
+        }, "*");
+    }
+
+    function notifyHeight(height = 120) {
+        window.parent.postMessage({
+            isStreamlitMessage: true,
+            type: "streamlit:setFrameHeight",
+            height: height
+        }, "*");
+    }
+
+    // Initialize Streamlit component handshakes
+    window.parent.postMessage({
+        isStreamlitMessage: true,
+        type: "streamlit:componentReady",
+        apiVersion: 1
+    }, "*");
+    notifyHeight(120);
+
+    window.addEventListener("message", function(event) {
+        if (event.data && event.data.type === "streamlit:render") {
+            notifyHeight(120);
+        }
+    });
+
+    // ----------------------------------------------------
+    // Text Send Handler
+    // ----------------------------------------------------
+    function submitMessage(text, isVoice = false) {
+        const cleanText = (text || promptInput.value || "").trim();
+        if (!cleanText) return;
+
+        statusText.className = "status-text success";
+        statusText.textContent = isVoice ? "Voice note sent!" : "Sending...";
+
+        sendToStreamlit({
+            type: "message",
+            text: cleanText,
+            is_voice: isVoice,
+            id: Date.now().toString()
+        });
+
+        promptInput.value = "";
+        setTimeout(() => {
+            statusText.className = "status-text";
+            statusText.textContent = "Ask anything";
+        }, 2000);
+    }
+
+    sendBtn.addEventListener("click", () => submitMessage(promptInput.value, false));
+
+    promptInput.addEventListener("keydown", function(event) {
+        if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            submitMessage(promptInput.value, false);
+        }
+    });
+
+    // ----------------------------------------------------
+    // Voice Recognition Engine
+    // (Uses Web Speech API if available, MediaRecorder fallback)
+    // ----------------------------------------------------
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    function startVoiceSession() {
+        recordedTranscript = "";
+
+        if (SpeechRecognition) {
+            startBrowserRecognition();
+        } else {
+            startMediaRecorderFallback();
+        }
+    }
+
+    // 1. Instant Real-Time Browser Speech Recognition
+    function startBrowserRecognition() {
+        try {
+            recognition = new SpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = true;
+            recognition.lang = "en-US";
+
+            recognition.onstart = function() {
+                isRecording = true;
+                micBtn.className = "btn-mic recording";
+                micBtn.innerHTML = "■";
+                statusDot.className = "status-dot active";
+                statusText.className = "status-text listening";
+                statusText.textContent = "Listening... Speak now";
+            };
+
+            recognition.onresult = function(event) {
+                let interimTranscript = "";
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        recordedTranscript += event.results[i][0].transcript;
+                    } else {
+                        interimTranscript += event.results[i][0].transcript;
+                    }
+                }
+                promptInput.value = recordedTranscript || interimTranscript;
+            };
+
+            recognition.onerror = function(event) {
+                console.warn("Speech recognition error:", event.error);
+                if (event.error === "not-allowed") {
+                    statusText.className = "status-text error";
+                    statusText.textContent = "Mic permission denied.";
+                } else if (event.error !== "no-speech") {
+                    statusText.className = "status-text error";
+                    statusText.textContent = "Voice error: " + event.error;
+                }
+                stopVoiceSession(false);
+            };
+
+            recognition.onend = function() {
+                if (isRecording) {
+                    stopVoiceSession(true);
+                }
+            };
+
+            recognition.start();
+
+        } catch (e) {
+            console.warn("Falling back to MediaRecorder due to:", e);
+            startMediaRecorderFallback();
+        }
+    }
+
+    // 2. Fallback MediaRecorder (for browsers without Web Speech)
+    async function startMediaRecorderFallback() {
+        try {
+            audioChunks = [];
+            audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+            mediaRecorder = new MediaRecorder(audioStream);
+            mediaRecorder.ondataavailable = function(e) {
+                if (e.data && e.data.size > 0) {
+                    audioChunks.push(e.data);
+                }
+            };
+
+            mediaRecorder.onstop = function() {
+                if (audioStream) {
+                    audioStream.getTracks().forEach(t => t.stop());
+                }
+
+                if (audioChunks.length === 0) {
+                    statusText.className = "status-text error";
+                    statusText.textContent = "No audio recorded.";
+                    return;
+                }
+
+                const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+                const reader = new FileReader();
+                reader.onloadend = function() {
+                    const base64 = (reader.result || "").split(",")[1];
+                    if (base64) {
+                        sendToStreamlit({
+                            type: "audio_blob",
+                            audio: base64,
+                            id: Date.now().toString(),
+                            is_voice: true
+                        });
+                        statusText.className = "status-text success";
+                        statusText.textContent = "Transcribing voice...";
+                    }
+                };
+                reader.readAsDataURL(audioBlob);
+            };
+
+            mediaRecorder.start(250);
+            isRecording = true;
+            micBtn.className = "btn-mic recording";
+            micBtn.innerHTML = "■";
+            statusDot.className = "status-dot active";
+            statusText.className = "status-text listening";
+            statusText.textContent = "Recording audio...";
+
+        } catch (err) {
+            statusText.className = "status-text error";
+            statusText.textContent = "Microphone blocked or unavailable.";
+            resetVoiceUI();
+        }
+    }
+
+    function stopVoiceSession(autoSubmit = true) {
+        isRecording = false;
+
+        if (recognition) {
+            try { recognition.stop(); } catch (e) {}
+            recognition = null;
+        }
+
+        if (mediaRecorder && mediaRecorder.state !== "inactive") {
+            try {
+                mediaRecorder.requestData();
+                mediaRecorder.stop();
+            } catch (e) {}
+        }
+
+        resetVoiceUI();
+
+        if (autoSubmit) {
+            const finalSpeech = (recordedTranscript || promptInput.value || "").trim();
+            if (finalSpeech) {
+                submitMessage(finalSpeech, true);
+            } else {
+                statusText.className = "status-text";
+                statusText.textContent = "No speech detected";
+            }
+        }
+    }
+
+    function resetVoiceUI() {
+        isRecording = false;
+        micBtn.className = "btn-mic";
+        micBtn.innerHTML = "🎙️";
+        statusDot.className = "status-dot";
+    }
+
+    micBtn.addEventListener("click", function() {
+        if (!isRecording) {
+            startVoiceSession();
+        } else {
+            stopVoiceSession(true);
+        }
+    });
+</script>
+
+</body>
+</html>
